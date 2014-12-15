@@ -39,6 +39,7 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
 @synthesize didRemoveAllObjectsBlock = _didRemoveAllObjectsBlock;
 @synthesize byteLimit = _byteLimit;
 @synthesize ageLimit = _ageLimit;
+@synthesize updateEntryDateOnRead = _updateEntryDateOnRead;
 
 #pragma mark - Initialization -
 
@@ -66,6 +67,7 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
         _byteCount = 0;
         _byteLimit = 0;
         _ageLimit = 0.0;
+		_updateEntryDateOnRead = YES;
 
         _dates = [[NSMutableDictionary alloc] init];
         _sizes = [[NSMutableDictionary alloc] init];
@@ -424,7 +426,9 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
                 TMDiskCacheError(error);
             }
 
-            [strongSelf setFileModificationDate:now forURL:fileURL];
+			if (_updateEntryDateOnRead) {
+				[strongSelf setFileModificationDate:now forURL:fileURL];
+			}
         }
 
         block(strongSelf, key, object, fileURL);
@@ -448,7 +452,9 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
         NSURL *fileURL = [strongSelf encodedFileURLForKey:key];
 
         if ([[NSFileManager defaultManager] fileExistsAtPath:[fileURL path]]) {
-            [strongSelf setFileModificationDate:now forURL:fileURL];
+			if (_updateEntryDateOnRead) {
+				[strongSelf setFileModificationDate:now forURL:fileURL];
+			}
         } else {
             fileURL = nil;
         }
@@ -1053,6 +1059,29 @@ NSString * const TMDiskCacheSharedName = @"TMDiskCacheShared";
         
         [strongSelf trimToAgeLimitRecursively];
     });
+}
+
+- (BOOL) updateEntryDateOnRead {
+	__block BOOL updateEntryDateOnRead = NO;
+
+	dispatch_sync(_queue, ^{
+		updateEntryDateOnRead = _updateEntryDateOnRead;
+	});
+
+	return updateEntryDateOnRead;
+}
+
+- (void) setUpdateEntryDateOnRead: (BOOL) updateEntryDateOnRead {
+	__weak TMDiskCache *weakSelf = self;
+
+	dispatch_barrier_async(_queue, ^{
+		TMDiskCache *strongSelf = weakSelf;
+		if (!strongSelf) {
+			return;
+		}
+
+		strongSelf->_updateEntryDateOnRead = updateEntryDateOnRead;
+	});
 }
 
 @end
